@@ -70,7 +70,7 @@ def factor_information_coefficient(factor_data, group_adjust=False, by_group=Fal
     if by_group:
         grouper.append("group")
 
-    ic = factor_data.groupby(grouper).apply(src_ic)
+    ic = factor_data.groupby(grouper, observed=True).apply(src_ic)
     if by_group:
         return ic
     else:
@@ -195,9 +195,9 @@ def factor_weights(factor_data, demeaned=True, group_adjust=False, equal_weight=
     if group_adjust:
         grouper.append("group")
 
-    weights = factor_data.groupby(grouper, group_keys=False)["factor"].apply(
-        to_weights, demeaned, equal_weight
-    )
+    weights = factor_data.groupby(grouper, group_keys=False, observed=True)[
+        "factor"
+    ].apply(to_weights, demeaned, equal_weight)
 
     if group_adjust:
         weights = weights.groupby(level="date", group_keys=False).apply(
@@ -507,7 +507,7 @@ def mean_return_by_quantile(
     if by_group:
         grouper.append("group")
 
-    group_stats = factor_data.groupby(grouper)[
+    group_stats = factor_data.groupby(grouper, observed=True)[
         utils.get_forward_returns_columns(factor_data.columns)
     ].agg(["mean", "std", "count"])
 
@@ -847,7 +847,7 @@ def average_cumulative_return_by_quantile(
         #
         returns_bygroup = []
 
-        for group, g_data in factor_data.groupby("group"):
+        for group, g_data in factor_data.groupby("group", observed=True):
             g_fq = g_data["factor_quantile"]
             if group_adjust:
                 demean_by = g_fq  # demeans at group level
@@ -878,7 +878,7 @@ def average_cumulative_return_by_quantile(
         #
         if group_adjust:
             all_returns = []
-            for group, g_data in factor_data.groupby("group"):
+            for group, g_data in factor_data.groupby("group", observed=True):
                 g_fq = g_data["factor_quantile"]
                 avgcumret = g_fq.groupby(g_fq).apply(
                     cumulative_return_around_event, g_fq
