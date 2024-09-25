@@ -71,6 +71,9 @@ Alphalens depends on:
 - [seaborn](https://github.com/mwaskom/seaborn)
 - [statsmodels](https://github.com/statsmodels/statsmodels)
 
+> Note that Numpy>=2.0 requires pandas>=2.2.2. If you are using an older version of pandas, you may need to upgrade
+> accordingly, otherwise you may encounter compatibility issues.
+
 # Usage
 
 A good way to get started is to run the examples in a [Jupyter notebook](https://jupyter.org/).
