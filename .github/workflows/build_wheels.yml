@@ -9,6 +9,10 @@ on:
         required: true
         default: 'PYPI'
         options: [ 'TESTPYPI', 'PYPI' ]
+      version:
+        description: 'Version to publish'
+        required: true
+        default: '0.5.11'
 
 jobs:
   dist:
@@ -26,7 +30,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-          ref: v0.4.4
+          ref: ${{ github.event.inputs.version }}
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
