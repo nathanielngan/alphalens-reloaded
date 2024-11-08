@@ -14,16 +14,21 @@
 # limitations under the License.
 
 import warnings
-import matplotlib
-matplotlib.use('TkAgg')
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from . import plotting
+from . import plotting_plotly
 from . import performance as perf
 from . import utils
 
+import dash
+from dash import html
+from random import randint
+from threading import Timer
+import webbrowser
+
+plot_lst = []
 
 class GridFigure(object):
     """
@@ -60,7 +65,7 @@ class GridFigure(object):
         self.gs = None
 
 
-@plotting.customize
+# @plotting_plotly.customize
 def create_summary_tear_sheet(factor_data, long_short=True, group_neutral=False):
     """
     Creates a small summary tear sheet with returns, information, and turnover
@@ -130,11 +135,11 @@ def create_summary_tear_sheet(factor_data, long_short=True, group_neutral=False)
     vertical_sections = 2 + fr_cols * 3
     gf = GridFigure(rows=vertical_sections, cols=1)
 
-    plotting.plot_quantile_statistics_table(factor_data)
+    plotting_plotly.plot_quantile_statistics_table(factor_data)
 
-    plotting.plot_returns_table(alpha_beta, mean_quant_rateret, mean_ret_spread_quant)
+    plotting_plotly.plot_returns_table(alpha_beta, mean_quant_rateret, mean_ret_spread_quant)
 
-    plotting.plot_quantile_returns_bar(
+    plotting_plotly.plot_quantile_returns_bar(
         mean_quant_rateret,
         by_group=False,
         ylim_percentiles=None,
@@ -143,7 +148,7 @@ def create_summary_tear_sheet(factor_data, long_short=True, group_neutral=False)
 
     # Information Analysis
     ic = perf.factor_information_coefficient(factor_data)
-    plotting.plot_information_table(ic)
+    plotting_plotly.plot_information_table(ic)
 
     # Turnover Analysis
     quantile_factor = factor_data["factor_quantile"]
@@ -164,16 +169,14 @@ def create_summary_tear_sheet(factor_data, long_short=True, group_neutral=False)
         axis=1,
     )
 
-    plotting.plot_turnover_table(autocorrelation, quantile_turnover)
+    plotting_plotly.plot_turnover_table(autocorrelation, quantile_turnover)
 
     plt.show()
     gf.close()
 
 
-@plotting.customize
-def create_returns_tear_sheet(
-    factor_data, long_short=True, group_neutral=False, by_group=False
-):
+# @plotting_plotly.customize
+def create_returns_tear_sheet(factor_data, long_short=True, group_neutral=False, by_group=False, plot=False):
     """
     Creates a tear sheet for returns analysis of a factor.
 
@@ -241,22 +244,28 @@ def create_returns_tear_sheet(
         std_err=compstd_quant_daily,
     )
 
-    fr_cols = len(factor_returns.columns)
-    vertical_sections = 2 + fr_cols * 3
-    gf = GridFigure(rows=vertical_sections, cols=1)
+    # fr_cols = len(factor_returns.columns)
+    # vertical_sections = 2 + fr_cols * 3
+    # gf = GridFigure(rows=vertical_sections, cols=1)
 
-    plotting.plot_returns_table(alpha_beta, mean_quant_rateret, mean_ret_spread_quant)
+    #Changed this
+    plot_returns_fig = plotting_plotly.plot_returns_table(alpha_beta, mean_quant_rateret, mean_ret_spread_quant, return_df=True)
+    plot_lst.append(plot_returns_fig)
 
-    plotting.plot_quantile_returns_bar(
-        mean_quant_rateret,
-        by_group=False,
-        ylim_percentiles=None,
-        ax=gf.next_row(),
-    )
+    #Changed this
+    df_plot_quantile_returns_fig = plotting_plotly.plot_quantile_returns_bar(
+                                        mean_quant_rateret,
+                                        by_group=False,
+                                        ylim_percentiles=None,
+                                        ax=None,
+                                    )
+    plot_lst.append(df_plot_quantile_returns_fig)
 
-    plotting.plot_quantile_returns_violin(
-        mean_quant_rateret_bydate, ylim_percentiles=(1, 99), ax=gf.next_row()
-    )
+    # Changed this
+    quantile_returns_violin = plotting_plotly.plot_quantile_returns_violin(
+                                mean_quant_rateret_bydate, ylim_percentiles=(1, 99), ax=None
+                            )
+    plot_lst.append(quantile_returns_violin)
 
     trading_calendar = factor_data.index.levels[0].freq
     if trading_calendar is None:
@@ -275,26 +284,32 @@ def create_returns_tear_sheet(
             + ("Long/Short " if long_short else "")
             + "Portfolio Cumulative Return (1D Period)"
         )
-
-        plotting.plot_cumulative_returns(
-            factor_returns["1D"], period="1D", title=title, ax=gf.next_row()
+        # Changed this
+        cum_return_plot = plotting_plotly.plot_cumulative_returns(
+                                factor_returns["1D"], period="1D", title=title, ax=None
+                            )
+        plot_lst.append(cum_return_plot)
+        # Changed this
+        cum_returns_by_quantile_plot = plotting_plotly.plot_cumulative_returns_by_quantile(
+            mean_quant_ret_bydate["1D"], period="1D", ax=None
         )
+        plot_lst.append(cum_returns_by_quantile_plot)
 
-        plotting.plot_cumulative_returns_by_quantile(
-            mean_quant_ret_bydate["1D"], period="1D", ax=gf.next_row()
-        )
+    # ax_mean_quantile_returns_spread_ts = [gf.next_row() for x in range(fr_cols)]
+    #Changed this
+    mean_quantile_returns_spread_ts_plot = plotting_plotly.plot_mean_quantile_returns_spread_time_series(
+                                                mean_ret_spread_quant,
+                                                std_err=std_spread_quant,
+                                                bandwidth=0.5,
+                                                ax=None,
+                                            )
 
-    ax_mean_quantile_returns_spread_ts = [gf.next_row() for x in range(fr_cols)]
-    plotting.plot_mean_quantile_returns_spread_time_series(
-        mean_ret_spread_quant,
-        std_err=std_spread_quant,
-        bandwidth=0.5,
-        ax=ax_mean_quantile_returns_spread_ts,
-    )
+    plot_lst.extend(mean_quantile_returns_spread_ts_plot)
 
-    plt.show()
-    gf.close()
+    if plot:
+        show_plot(plot_lst)
 
+    # TODO: Change this later...
     if by_group:
         (
             mean_return_quantile_group,
@@ -321,18 +336,20 @@ def create_returns_tear_sheet(
         gf = GridFigure(rows=vertical_sections, cols=2)
 
         ax_quantile_returns_bar_by_group = [gf.next_cell() for _ in range(num_groups)]
-        plotting.plot_quantile_returns_bar(
+        #TODO: Change this
+        plotting_plotly.plot_quantile_returns_bar(
             mean_quant_rateret_group,
             by_group=True,
             ylim_percentiles=(5, 95),
             ax=ax_quantile_returns_bar_by_group,
         )
+        #TODO: Change this
         plt.show()
         gf.close()
 
 
-@plotting.customize
-def create_information_tear_sheet(factor_data, group_neutral=False, by_group=False):
+# @plotting_plotly.customize
+def create_information_tear_sheet(factor_data, group_neutral=False, by_group=False, plot=False):
     """
     Creates a tear sheet for information analysis of a factor.
 
@@ -352,45 +369,55 @@ def create_information_tear_sheet(factor_data, group_neutral=False, by_group=Fal
 
     ic = perf.factor_information_coefficient(factor_data, group_neutral)
 
-    plotting.plot_information_table(ic)
+    #Changed this
+    information_table = plotting_plotly.plot_information_table(ic, return_df=True)
+    plot_lst.append(information_table)
 
-    columns_wide = 2
-    fr_cols = len(ic.columns)
-    rows_when_wide = ((fr_cols - 1) // columns_wide) + 1
-    vertical_sections = fr_cols + 3 * rows_when_wide + 2 * fr_cols
-    gf = GridFigure(rows=vertical_sections, cols=columns_wide)
+    # columns_wide = 2
+    # fr_cols = len(ic.columns)
+    # rows_when_wide = ((fr_cols - 1) // columns_wide) + 1
+    # vertical_sections = fr_cols + 3 * rows_when_wide + 2 * fr_cols
+    # gf = GridFigure(rows=vertical_sections, cols=columns_wide)
+    # ax_ic_ts = [gf.next_row() for _ in range(fr_cols)]
 
-    ax_ic_ts = [gf.next_row() for _ in range(fr_cols)]
-    plotting.plot_ic_ts(ic, ax=ax_ic_ts)
+    #Changed This
+    ic_ts_plot = plotting_plotly.plot_ic_ts(ic, ax=None)
+    plot_lst.extend(ic_ts_plot)
 
-    ax_ic_hqq = [gf.next_cell() for _ in range(fr_cols * 2)]
-    plotting.plot_ic_hist(ic, ax=ax_ic_hqq[::2])
-    plotting.plot_ic_qq(ic, ax=ax_ic_hqq[1::2])
+    # ax_ic_hqq = [gf.next_cell() for _ in range(fr_cols * 2)]
+
+    #TODO: Change this later
+    # ic_hist_plot = plotting_plotly.plot_ic_hist(ic, ax=None)
+    # plot_lst.extend(ic_hist_plot)
+    # ic_qq_plot = plotting_plotly.plot_ic_qq(ic, ax=None)
+    # plot_lst.extend(ic_qq_plot)
 
     if not by_group:
-
+        #TODO Change this
         mean_monthly_ic = perf.mean_information_coefficient(
             factor_data,
             group_adjust=group_neutral,
             by_group=False,
             by_time="M",
         )
-        ax_monthly_ic_heatmap = [gf.next_cell() for x in range(fr_cols)]
-        plotting.plot_monthly_ic_heatmap(mean_monthly_ic, ax=ax_monthly_ic_heatmap)
+        # ax_monthly_ic_heatmap = [gf.next_cell() for x in range(fr_cols)]
+        # plotting_plotly.plot_monthly_ic_heatmap(mean_monthly_ic, ax=ax_monthly_ic_heatmap)
+        heatplot = plotting_plotly.plot_monthly_ic_heatmap(mean_monthly_ic, ax=None)
+        plot_lst.extend(heatplot)
 
-    if by_group:
-        mean_group_ic = perf.mean_information_coefficient(
-            factor_data, group_adjust=group_neutral, by_group=True
-        )
+    # #TODO: Change this later
+    # if by_group:
+    #     mean_group_ic = perf.mean_information_coefficient(
+    #         factor_data, group_adjust=group_neutral, by_group=True
+    #     )
+    #
+    #     plotting_plotly.plot_ic_by_group(mean_group_ic, ax=gf.next_row())
+    if plot:
+        show_plot(plot_lst)
 
-        plotting.plot_ic_by_group(mean_group_ic, ax=gf.next_row())
 
-    plt.show()
-    gf.close()
-
-
-@plotting.customize
-def create_turnover_tear_sheet(factor_data, turnover_periods=None):
+# @plotting_plotly.customize
+def create_turnover_tear_sheet(factor_data, turnover_periods=None, plot=False):
     """
     Creates a tear sheet for analyzing the turnover properties of a factor.
 
@@ -440,36 +467,31 @@ def create_turnover_tear_sheet(factor_data, turnover_periods=None):
         axis=1,
     )
 
-    plotting.plot_turnover_table(autocorrelation, quantile_turnover)
-
-    fr_cols = len(turnover_periods)
-    columns_wide = 1
-    rows_when_wide = ((fr_cols - 1) // 1) + 1
-    vertical_sections = fr_cols + 3 * rows_when_wide + 2 * fr_cols
-    gf = GridFigure(rows=vertical_sections, cols=columns_wide)
+    #Changed this
+    tables = plotting_plotly.plot_turnover_table(autocorrelation, quantile_turnover, return_df=True)
+    plot_lst.extend(tables)
 
     for period in turnover_periods:
         if quantile_turnover[period].isnull().all().all():
             continue
-        plotting.plot_top_bottom_quantile_turnover(
-            quantile_turnover[period], period=period, ax=gf.next_row()
-        )
+        top_bottom_quantile_turnover_plot = plotting_plotly.plot_top_bottom_quantile_turnover(
+                                                quantile_turnover[period], period=period, ax=None
+                                            )
+        plot_lst.append(top_bottom_quantile_turnover_plot)
 
     for period in autocorrelation:
         if autocorrelation[period].isnull().all():
             continue
-        plotting.plot_factor_rank_auto_correlation(
-            autocorrelation[period], period=period, ax=gf.next_row()
+        #Changed this
+        factor_rank_auto_correlation_plot = plotting_plotly.plot_factor_rank_auto_correlation(
+            autocorrelation[period], period=period, ax=None
         )
+        plot_lst.append(factor_rank_auto_correlation_plot)
+    if plot:
+        show_plot(plot_lst)
 
-    plt.show()
-    gf.close()
-
-
-@plotting.customize
-def create_full_tear_sheet(
-    factor_data, long_short=True, group_neutral=False, by_group=False
-):
+# @plotting_plotly.customize
+def create_full_tear_sheet(factor_data, long_short=True, group_neutral=False, by_group=False):
     """
     Creates a full tear sheet for analysis and evaluating single
     return predicting (alpha) factor.
@@ -496,17 +518,14 @@ def create_full_tear_sheet(
         If True, display graphs separately for each group.
     """
 
-    plotting.plot_quantile_statistics_table(factor_data)
-    create_returns_tear_sheet(
-        factor_data, long_short, group_neutral, by_group, set_context=False
-    )
-    create_information_tear_sheet(
-        factor_data, group_neutral, by_group, set_context=False
-    )
-    create_turnover_tear_sheet(factor_data, set_context=False)
+    plot_lst.append(plotting_plotly.plot_quantile_statistics_table(factor_data, return_df=True))
+    create_returns_tear_sheet(factor_data, long_short, group_neutral, by_group)
+    create_information_tear_sheet(factor_data, group_neutral, by_group)
+    create_turnover_tear_sheet(factor_data)
 
+    show_plot(plot_lst)
 
-@plotting.customize
+# @plotting_plotly.customize
 def create_event_returns_tear_sheet(
     factor_data,
     returns,
@@ -564,7 +583,7 @@ def create_event_returns_tear_sheet(
         vertical_sections += ((num_quantiles - 1) // 2) + 1
     cols = 2 if num_quantiles != 1 else 1
     gf = GridFigure(rows=vertical_sections, cols=cols)
-    plotting.plot_quantile_average_cumulative_return(
+    plotting_plotly.plot_quantile_average_cumulative_return(
         avg_cumulative_returns,
         by_quantile=False,
         std_bar=False,
@@ -572,7 +591,7 @@ def create_event_returns_tear_sheet(
     )
     if std_bar:
         ax_avg_cumulative_returns_by_q = [gf.next_cell() for _ in range(num_quantiles)]
-        plotting.plot_quantile_average_cumulative_return(
+        plotting_plotly.plot_quantile_average_cumulative_return(
             avg_cumulative_returns,
             by_quantile=True,
             std_bar=True,
@@ -600,7 +619,7 @@ def create_event_returns_tear_sheet(
 
         for group, avg_cumret in avg_cumret_by_group.groupby(level="group"):
             avg_cumret.index = avg_cumret.index.droplevel("group")
-            plotting.plot_quantile_average_cumulative_return(
+            plotting_plotly.plot_quantile_average_cumulative_return(
                 avg_cumret,
                 by_quantile=False,
                 std_bar=False,
@@ -611,8 +630,7 @@ def create_event_returns_tear_sheet(
         plt.show()
         gf.close()
 
-
-@plotting.customize
+# @plotting_plotly.customize
 def create_event_study_tear_sheet(
     factor_data, returns, avgretplot=(5, 15), rate_of_ret=True, n_bars=50
 ):
@@ -643,10 +661,10 @@ def create_event_study_tear_sheet(
 
     long_short = False
 
-    plotting.plot_quantile_statistics_table(factor_data)
+    plotting_plotly.plot_quantile_statistics_table(factor_data)
 
     gf = GridFigure(rows=1, cols=1)
-    plotting.plot_events_distribution(
+    plotting_plotly.plot_events_distribution(
         events=factor_data["factor"], num_bars=n_bars, ax=gf.next_row()
     )
     plt.show()
@@ -688,11 +706,11 @@ def create_event_study_tear_sheet(
     vertical_sections = 2 + fr_cols * 1
     gf = GridFigure(rows=vertical_sections + 1, cols=1)
 
-    plotting.plot_quantile_returns_bar(
+    plotting_plotly.plot_quantile_returns_bar(
         mean_quant_ret, by_group=False, ylim_percentiles=None, ax=gf.next_row()
     )
 
-    plotting.plot_quantile_returns_violin(
+    plotting_plotly.plot_quantile_returns_violin(
         mean_quant_ret_bydate, ylim_percentiles=(1, 99), ax=gf.next_row()
     )
 
@@ -706,3 +724,17 @@ def create_event_study_tear_sheet(
 
     plt.show()
     gf.close()
+
+#Plotly
+def show_plot(plot_list):
+    '''
+    Added by Nathan to show the plots using plotly
+    '''
+    app = dash.Dash(__name__, assets_folder='/Users/Nathan/Python/Dash_Assets')
+    app.layout = html.Div(plot_list)
+    port = randint(1000, 9999)
+    def open_browser():
+        webbrowser.open_new("http://localhost:{}".format(port))
+
+    Timer(1, open_browser).start()
+    app.run_server(port=port)
