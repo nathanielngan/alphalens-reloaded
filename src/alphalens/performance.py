@@ -23,7 +23,7 @@ from scipy import stats
 from statsmodels.regression.linear_model import OLS
 from statsmodels.tools.tools import add_constant
 from . import utils
-
+import re
 
 def factor_information_coefficient(factor_data, group_adjust=False, by_group=False):
     """
@@ -333,7 +333,12 @@ def factor_alpha_beta(
             alpha_beta.loc["Ann. alpha", period] = np.nan
             alpha_beta.loc["beta", period] = np.nan
         else:
-            freq_adjust = pd.Timedelta("252Days") / pd.Timedelta(period)
+            #This logic is wrong for months and others - NN 13/11/2024
+            if 'D' in period.upper():
+                freq_adjust = pd.Timedelta("252Days") / pd.Timedelta(period)
+            elif 'M' in period.upper():
+                p = int(re.findall(r'\d+', period)[0])
+                freq_adjust = 12/ p
 
             alpha_beta.loc["Ann. alpha", period] = (1 + alpha) ** freq_adjust - 1
             alpha_beta.loc["beta", period] = beta
@@ -572,7 +577,7 @@ def compute_mean_returns_spread(mean_returns, upper_quant, lower_quant, std_err=
     return mean_return_difference, joint_std_err
 
 
-def quantile_turnover(quantile_factor, quantile, period=1):
+def quantile_turnover(quantile_factor, quantile, period=1, freq=None):
     """
     Computes the proportion of names in a factor quantile that were
     not in that quantile in the previous period.
@@ -594,7 +599,8 @@ def quantile_turnover(quantile_factor, quantile, period=1):
 
     # keep DateTimeIndex frequency information
     date_idx = quantile_factor.index.names.index("date")
-    freq = quantile_factor.index.levels[date_idx].freq
+    if freq is not None:
+        freq = quantile_factor.index.levels[date_idx].freq
 
     quant_names = quantile_factor[quantile_factor == quantile]
     quant_name_sets = (
@@ -617,7 +623,7 @@ def quantile_turnover(quantile_factor, quantile, period=1):
     return quant_turnover
 
 
-def factor_rank_autocorrelation(factor_data, period=1):
+def factor_rank_autocorrelation(factor_data, period=1, freq=None):
     """
     Computes autocorrelation of mean factor ranks in specified time spans.
     We must compare period to period factor ranks rather than factor values
@@ -646,7 +652,8 @@ def factor_rank_autocorrelation(factor_data, period=1):
     # grouper = [factor_data.index.get_level_values('date')]
 
     date_idx = factor_data.index.names.index("date")
-    freq = factor_data.index.levels[date_idx].freq
+    if freq is None:
+        freq = factor_data.index.levels[date_idx].freq
 
     asset_ranks_by_day = (
         factor_data.groupby(level="date")["factor"]

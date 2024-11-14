@@ -233,12 +233,12 @@ def plot_turnover_table(autocorrelation_data, quantile_turnover, return_df=False
         for quantile, p_data in quantile_turnover[period].items():
             turnover_table.loc[
                 "Quantile {} Mean Turnover ".format(quantile),
-                "{}D".format(period),
+                "{} Period(s)".format(period),
             ] = p_data.mean()
     auto_corr = pd.DataFrame()
     for period, p_data in autocorrelation_data.items():
         auto_corr.loc[
-            "Mean Factor Rank Autocorrelation", "{}D".format(period)
+            "Mean Factor Rank Autocorrelation", "{} Period(s)".format(period)
         ] = p_data.mean()
 
     if return_df:
@@ -267,7 +267,7 @@ def plot_information_table(ic_data, return_df=False):
     ic_summary_table["IC Kurtosis"] = stats.kurtosis(ic_data)
 
     if return_df:
-        return plotly_table_fig(ic_summary_table.reset_index(),
+        return plotly_table_fig(ic_summary_table.T.reset_index(),
                                 title_text='Information Analysis',
                                 id='information_table_plot')
     else:
@@ -285,7 +285,7 @@ def plot_quantile_statistics_table(factor_data, return_df=False):
     )
 
     if return_df:
-        return plotly_table_fig(quantile_stats.reset_index(),title_text='Quantile Stats')
+        return plotly_table_fig(quantile_stats.T.reset_index(),title_text='Quantile Stats')
     else:
         print("Quantiles Statistics")
         utils.print_table(quantile_stats)
@@ -312,13 +312,20 @@ def plot_ic_ts(ic, ax=None):
     ic = ic.copy()
     ax = []
     for i in ic:
-        title = "{} Period Forward Return Information Coefficient (IC)".format(i)
+        title = "{} Period(s) Forward Return Information Coefficient (IC)".format(i)
         tmp = ic[i]
         ymin = tmp.min() * 1.1
         ymax = tmp.max() * 1.1
-        tmp = pd.concat([tmp, tmp.rolling(window=22).mean()], axis=1)
-        tmp.fillna(0, inplace=True)
-        tmp.columns = [i, "1m moving avg"]
+        #TODO: Condition monthly and daily
+        if 'M' in i.upper():
+            tmp = pd.concat([tmp, tmp.rolling(window=3).mean()], axis=1)
+            tmp.fillna(0, inplace=True)
+            tmp.columns = [i, "3m moving avg"]
+        if 'D' in i.upper():
+            tmp = pd.concat([tmp, tmp.rolling(window=22).mean()], axis=1)
+            tmp.fillna(0, inplace=True)
+            tmp.columns = [i, "1m moving avg"]
+
         fig = px.line(tmp,
                       labels={"value": "IC"},
                       title=title,
@@ -461,7 +468,7 @@ def plot_ic_qq(ic, theoretical_dist=stats.norm, ax=None):
             ax=a,
         )
         a.set(
-            title="{} Period IC {} Dist. Q-Q".format(period_num, dist_name),
+            title="{} Period(s) IC {} Dist. Q-Q".format(period_num, dist_name),
             ylabel="Observed Quantile",
             xlabel="{} Distribution Quantile".format(dist_name),
         )
@@ -646,7 +653,6 @@ def plot_mean_quantile_returns_spread_time_series(
     if isinstance(mean_returns_spread, pd.DataFrame):
 
         mean_returns_spread_bps = mean_returns_spread* DECIMAL_TO_BPS
-        #TODO: Change this plot
         for i in mean_returns_spread_bps:
             title = (
                 "Top Minus Bottom Quantile Mean Return "
@@ -655,9 +661,15 @@ def plot_mean_quantile_returns_spread_time_series(
             tmp = mean_returns_spread_bps[i]
             ymin = tmp.min()*1.1
             ymax = tmp.max()*1.1
-            tmp = pd.concat([tmp,tmp.rolling(window=22).mean()], axis=1)
-            tmp.fillna(0, inplace=True)
-            tmp.columns = [i, "1m moving avg"]
+
+            if 'M' in i.upper():
+                tmp = pd.concat([tmp,tmp.rolling(window=3).mean()], axis=1)
+                tmp.fillna(0, inplace=True)
+                tmp.columns = [i, "3m moving avg"]
+            if 'D' in i.upper():
+                tmp = pd.concat([tmp,tmp.rolling(window=22).mean()], axis=1)
+                tmp.fillna(0, inplace=True)
+                tmp.columns = [i, "1m moving avg"]
 
             fig = px.line(tmp,
                           labels = {"value": "Difference In Quantile Mean Return (bps)"},
@@ -733,7 +745,7 @@ def plot_factor_rank_auto_correlation(factor_autocorrelation, period=1, ax=None)
     # if ax is None:
     #     f, ax = plt.subplots(1, 1, figsize=(18, 6))
 
-    title = "{}D Period Factor Rank Autocorrelation".format(period)
+    title = "{} Period(s) Factor Rank Autocorrelation".format(period)
     fig = px.line(factor_autocorrelation.fillna(0),
                   labels={"value": "Autocorrelation Coefficient"},
                   title=title,
@@ -795,7 +807,7 @@ def plot_top_bottom_quantile_turnover(quantile_turnover, period=1, ax=None):
     turnover["top quantile turnover"] = quantile_turnover[max_quantile]
     turnover["bottom quantile turnover"] = quantile_turnover[min_quantile]
 
-    title = "{}D Period Top and Bottom Quantile Turnover".format(period)
+    title = "{} Period Top and Bottom Quantile Turnover".format(period)
     fig = px.line(turnover.fillna(0),
                   labels={"value": "Proportion Of Names New To Quantile"},
                   title=title,
@@ -929,7 +941,6 @@ def plot_cumulative_returns(factor_returns, period, freq=None, title=None, ax=No
     #     f, ax = plt.subplots(1, 1, figsize=(18, 6))
 
     factor_returns = perf.cumulative_returns(factor_returns)
-    title = "Portfolio Cumulative Return ({} Fwd Period)".format(period)
     fig = px.line(factor_returns,
                   labels={"value": "Cumulative Returns"},
                   title=title,
@@ -986,7 +997,7 @@ def plot_cumulative_returns_by_quantile(quantile_returns, period, freq=None, ax=
     cum_ret = ret_wide.apply(perf.cumulative_returns)
     cum_ret = cum_ret.loc[:, ::-1]  # we want negative quantiles as 'red'
     ymin, ymax = cum_ret.min().min(), cum_ret.max().max()
-    title = """Cumulative Return by Quantile ({} Period Forward Return)""".format(period)
+    title = """Cumulative Return by Quantile ({} Period(s) Forward Return)""".format(period)
     fig = px.line(cum_ret,
                   labels = {"value": "Log Cumulative Returns"},
                   title = title,

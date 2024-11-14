@@ -27,6 +27,7 @@ from dash import html
 from random import randint
 from threading import Timer
 import webbrowser
+import re
 
 plot_lst = []
 
@@ -211,6 +212,7 @@ def create_returns_tear_sheet(factor_data, long_short=True, group_neutral=False,
         group_adjust=group_neutral,
     )
 
+    #TODO: This needs to be changed - NN 13/11/2024
     mean_quant_rateret = mean_quant_ret.apply(
         utils.rate_of_return, axis=0, base_period=mean_quant_ret.columns[0]
     )
@@ -269,6 +271,7 @@ def create_returns_tear_sheet(factor_data, long_short=True, group_neutral=False,
 
     trading_calendar = factor_data.index.levels[0].freq
     if trading_calendar is None:
+
         trading_calendar = pd.tseries.offsets.BDay()
         warnings.warn(
             "'freq' not set in factor_data index: assuming business day",
@@ -277,21 +280,34 @@ def create_returns_tear_sheet(factor_data, long_short=True, group_neutral=False,
 
     # Compute cumulative returns from daily simple returns, if '1D'
     # returns are provided.
-    if "1D" in factor_returns:
+    for i in factor_returns:
+        #For each forward period
         title = (
             "Factor Weighted "
             + ("Group Neutral " if group_neutral else "")
             + ("Long/Short " if long_short else "")
-            + "Portfolio Cumulative Return (1D Period)"
+            + "Portfolio Cumulative Return ("+str(i)+")"
         )
         # Changed this
         cum_return_plot = plotting_plotly.plot_cumulative_returns(
-                                factor_returns["1D"], period="1D", title=title, ax=None
+                                factor_returns[i], period=i, title=title, ax=None
                             )
         plot_lst.append(cum_return_plot)
+
+        #Added max quantile - min quantile cumulative returns
+        q_max = mean_quant_ret_bydate.index.levels[0].max()
+        q_min = mean_quant_ret_bydate.index.levels[0].min()
+        qmax_qmin_title = ("Q"+str(int(q_max)) + "-" + "Q"+str(int(q_min))
+                            + " Portfolio Cumulative Return ("+str(i)+")")
+        max_min_return_plot = plotting_plotly.plot_cumulative_returns(
+                            (mean_quant_ret_bydate[i].loc[q_max] - mean_quant_ret_bydate[i].loc[q_min]), period=i,
+                            title=qmax_qmin_title, ax=None
+                            )
+        plot_lst.append(max_min_return_plot)
+
         # Changed this
         cum_returns_by_quantile_plot = plotting_plotly.plot_cumulative_returns_by_quantile(
-            mean_quant_ret_bydate["1D"], period="1D", ax=None
+            mean_quant_ret_bydate[i], period=i, ax=None
         )
         plot_lst.append(cum_returns_by_quantile_plot)
 
@@ -439,8 +455,9 @@ def create_turnover_tear_sheet(factor_data, turnover_periods=None, plot=False):
     """
 
     if turnover_periods is None:
+        #Changed as this cannot accomdate months or other frequencies
         input_periods = utils.get_forward_returns_columns(
-            factor_data.columns, require_exact_day_multiple=True
+            factor_data.columns, require_exact_day_multiple=False
         ).to_numpy()
         turnover_periods = utils.timedelta_strings_to_integers(input_periods)
     else:
@@ -448,10 +465,16 @@ def create_turnover_tear_sheet(factor_data, turnover_periods=None, plot=False):
 
     quantile_factor = factor_data["factor_quantile"]
 
+    #TODO: figure how to remove numbers from periods
+    if 'M' in input_periods[0].upper():
+        freq = 'ME'
+    elif 'D' in input_periods[0].upper():
+        freq = 'D'
+
     quantile_turnover = {
         p: pd.concat(
             [
-                perf.quantile_turnover(quantile_factor, q, p)
+                perf.quantile_turnover(quantile_factor, q, p, freq=freq)
                 for q in quantile_factor.sort_values().unique().tolist()
             ],
             axis=1,
@@ -461,7 +484,7 @@ def create_turnover_tear_sheet(factor_data, turnover_periods=None, plot=False):
 
     autocorrelation = pd.concat(
         [
-            perf.factor_rank_autocorrelation(factor_data, period)
+            perf.factor_rank_autocorrelation(factor_data, period, freq=freq)
             for period in turnover_periods
         ],
         axis=1,

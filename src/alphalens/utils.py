@@ -317,31 +317,32 @@ def compute_forward_returns(
             )
             forward_returns[mask] = np.nan
 
-        #
+
         # Find the period length, which will be the column name. We'll test
         # several entries in order to find out the most likely period length
         # (in case the user passed inconsinstent data)
         #
-        days_diffs = []
-        for i in range(30):
-            if i >= len(forward_returns.index):
-                break
-            p_idx = prices.index.get_loc(forward_returns.index[i])
-            if p_idx is None or p_idx < 0 or (p_idx + period) >= len(prices.index):
-                continue
-            start = prices.index[p_idx]
-            end = prices.index[p_idx + period]
-            period_len = diff_custom_calendar_timedeltas(start, end, freq)
-            days_diffs.append(period_len.components.days)
+        #TODO: Wtf is this logic
+        # days_diffs = []
+        # for i in range(30):
+        #     if i >= len(forward_returns.index):
+        #         break
+        #     p_idx = prices.index.get_loc(forward_returns.index[i])
+        #     if p_idx is None or p_idx < 0 or (p_idx + period) >= len(prices.index):
+        #         continue
+        #     start = prices.index[p_idx]
+        #     end = prices.index[p_idx + period]
+        #     period_len = diff_custom_calendar_timedeltas(start, end, freq)
+        #     days_diffs.append(period_len.components.days)
+        #
+        # delta_days = (
+        #     period_len.components.days - mode(days_diffs, keepdims=True).mode[0]
+        # )
+        # period_len -= pd.Timedelta(days=delta_days)
+        # label = timedelta_to_string(period_len)
 
-        delta_days = (
-            period_len.components.days - mode(days_diffs, keepdims=True).mode[0]
-        )
-        period_len -= pd.Timedelta(days=delta_days)
-        label = timedelta_to_string(period_len)
-
+        label = str(period)+freq.name
         column_list.append(label)
-
         raw_values_dict[label] = np.concatenate(forward_returns.values)
 
     df = pd.DataFrame.from_dict(raw_values_dict)
@@ -355,6 +356,7 @@ def compute_forward_returns(
 
     # now set the columns correctly
     df = df[column_list]
+    #TODO: PROBLEMATIC!!!
     df.index.levels[0].freq = freq
     df.index.set_names(["date", "asset"], inplace=True)
 
@@ -687,7 +689,7 @@ def get_clean_factor_and_forward_returns(
     quantiles=5,
     bins=None,
     periods=(1, 5, 10),
-    filter_zscore=20,
+    filter_zscore=None,
     groupby_labels=None,
     max_loss=0.35,
     zero_aware=False,
@@ -884,7 +886,13 @@ def rate_of_return(period_ret, base_period):
         returns values.
     """
     period_len = period_ret.name
-    conversion_factor = pd.Timedelta(base_period) / pd.Timedelta(period_len)
+    #This is simply a ratio of the first period and the other periods
+    # conversion_factor = pd.Timedelta(base_period) / pd.Timedelta(period_len)
+
+    base_period = int(re.findall(r'\d+', base_period)[0])
+    period_len = int(re.findall(r'\d+', period_len)[0])
+
+    conversion_factor = base_period / period_len
     return period_ret.add(1).pow(conversion_factor).sub(1)
 
 
@@ -909,7 +917,12 @@ def std_conversion(period_std, base_period):
         standard deviation/error values.
     """
     period_len = period_std.name
-    conversion_factor = pd.Timedelta(period_len) / pd.Timedelta(base_period)
+    # conversion_factor = pd.Timedelta(period_len) / pd.Timedelta(base_period)
+
+    base_period = int(re.findall(r'\d+', base_period)[0])
+    period_len = int(re.findall(r'\d+', period_len)[0])
+    conversion_factor = base_period / period_len
+
     return period_std / np.sqrt(conversion_factor)
 
 
@@ -929,7 +942,8 @@ def get_forward_returns_columns(columns, require_exact_day_multiple=False):
                 "Skipping return periods that aren't exact multiples" + " of days."
             )
     else:
-        pattern = re.compile(r"^(\d+([Dhms]|ms|us|ns]))+$", re.IGNORECASE)
+        #This may need to be further changed - NN 13/11/2024
+        pattern = re.compile(r"^(\d+([Dhms]|ms|us|ns|me|d]))+$", re.IGNORECASE)
         valid_columns = [(pattern.match(col) is not None) for col in columns]
 
     return columns[valid_columns]
@@ -982,8 +996,11 @@ def timedelta_strings_to_integers(sequence):
     sequence : list
         Integer days corresponding to the input sequence, e.g. [1, 5].
     """
-    return list(map(lambda x: pd.Timedelta(x).days, sequence))
-
+    #Changed to accomdate other frequencies - NN 13/11/2024
+    if 'D' in sequence[0].upper():
+        return list(map(lambda x: pd.Timedelta(x).days, sequence))
+    elif 'M' in sequence[0].upper():
+        return list(map(lambda x: int(re.findall(r'\d+', x)[0]), sequence))
 
 def add_custom_calendar_timedelta(input, timedelta, freq):
     """
